@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 🚀 Development Environment Setup
 
 ### Prerequisites
-- **Node.js**: Version 20.0.0 or higher
+- **Node.js**: Version 20.0.0 or higher (development requires ~20.19.0 for dependencies)
 - **npm**: Latest version (comes with Node.js)
 - **Git**: For version control
 - Optional: **Docker** or **Podman** for sandbox development
@@ -17,13 +17,13 @@ git clone https://github.com/google-gemini/gemini-cli.git
 cd gemini-cli
 
 # Install dependencies for all packages
-npm ci
+npm install
 
 # Build all packages
 npm run build:all
 ```
 
-## 📋 Common Development Commands
+## 📋 Essential Development Commands
 
 ### Primary Development Workflow
 ```bash
@@ -33,7 +33,7 @@ npm run preflight
 # Individual commands for focused development:
 npm run build              # Build main application
 npm run build:all          # Build all packages (including VSCode extension)
-npm run test              # Run all unit tests
+npm run test               # Run all unit tests
 npm run test:e2e          # Run end-to-end integration tests
 npm run typecheck         # TypeScript type checking
 npm run lint              # Code linting
@@ -49,6 +49,9 @@ npm run test:integration:all              # All integration tests
 npm run test:integration:sandbox:docker   # Docker sandbox tests
 npm run test:integration:sandbox:podman   # Podman sandbox tests
 npm run test:scripts                      # Script tests
+
+# Run single test file
+npx vitest run packages/cli/src/ui/components/Header.test.tsx
 ```
 
 ### Development and Debugging
@@ -56,39 +59,44 @@ npm run test:scripts                      # Script tests
 npm run start             # Start the CLI in development mode
 npm run debug             # Start with debugger attached
 npm run build-and-start   # Build then start
+
+# Debug with React DevTools
+DEV=true npm start
+npx react-devtools@4.28.5
 ```
 
-**Important**: Always run `npm run preflight` before submitting changes. This validates your changes meet all quality gates.
+**Critical**: Always run `npm run preflight` before submitting changes. This validates your changes meet all quality gates.
 
 ## 🏗️ Architecture Overview
 
 ### Monorepo Structure
-This is a **TypeScript monorepo** using npm workspaces with the following packages:
+This is a **TypeScript monorepo** using npm workspaces with four main packages:
 
-- **`packages/cli/`** - Main CLI application and user interface (React with Ink)
+- **`packages/cli/`** - Main CLI application with React + Ink terminal UI
 - **`packages/core/`** - Core logic, tools, services, and Gemini API integration
-- **`packages/test-utils/`** - Shared test utilities
+- **`packages/test-utils/`** - Shared test utilities across packages
 - **`packages/vscode-ide-companion/`** - VSCode extension for IDE integration
 
-### Key Components
+### Key Architectural Patterns
 
 #### CLI Application (`packages/cli/`)
-- **Entry Point**: `packages/cli/index.ts` → `packages/cli/src/gemini.tsx`
-- **UI Framework**: React with Ink for terminal interface
+- **Entry Point**: `index.ts` → `src/gemini.tsx`
+- **UI Framework**: React with Ink for rich terminal interface
 - **Command System**: Slash commands (`/help`, `/chat`, `/settings`, etc.)
-- **Authentication**: OAuth, API key, and Vertex AI flows
+- **Authentication**: Multi-method (OAuth, API key, Vertex AI)
+- **State Management**: React Context with custom hooks
 
 #### Core System (`packages/core/`)
-- **Tool Registry**: Built-in tools (file operations, shell, web search)
+- **Tool Registry**: Centralized tool management and execution
 - **MCP Integration**: Model Context Protocol client for extensibility
-- **Gemini Client**: API communication with Google's Gemini models
-- **Services**: File discovery, shell execution, telemetry
+- **Gemini Client**: Streaming API communication with response handling
+- **Services**: File discovery, shell execution, Git operations, telemetry
 
 ### Tool System Architecture
 ```
 User Input → Command Processor → Tool Registry → MCP Client → External Tools
                 ↓
-          Core Tool Scheduler → Gemini API → Streaming Response
+          Core Tool Scheduler → Gemini API → Streaming Response → React UI
 ```
 
 Built-in tools include:
@@ -97,7 +105,7 @@ Built-in tools include:
 - Web operations (`web-fetch`, `web-search`)
 - Memory management (`memory-tool`)
 
-## 🧪 Testing Guidelines
+## 🧪 Testing Strategy
 
 ### Framework and Structure
 This project uses **Vitest** as the primary testing framework:
@@ -180,23 +188,6 @@ MCP servers extend functionality. Configure in `~/.gemini/settings.json`:
 }
 ```
 
-## 🔧 Project-Specific Patterns
-
-### Error Handling
-- Use custom error types in `packages/core/src/utils/errors.ts`
-- Implement graceful degradation for network/API errors
-- Provide user-friendly error messages in CLI
-
-### Context Management
-- **GEMINI.md files**: Project-specific context files
-- **Memory system**: Long-term conversation memory
-- **Checkpointing**: Save/restore conversation state
-
-### Security Considerations
-- **Sandboxing**: Shell commands run in controlled environment
-- **File access**: Respect `.geminiignore` patterns
-- **Trusted folders**: User confirmation for sensitive operations
-
 ## 🎯 Code Style and Standards
 
 ### TypeScript Guidelines
@@ -234,6 +225,28 @@ switch (value.type) {
 - **Immutability**: Prefer array methods (`.map()`, `.filter()`, `.reduce()`)
 - **Functional style**: Pure functions, no side effects where possible
 
+## 🔧 Project-Specific Implementation Details
+
+### Streaming Response Handling
+The CLI uses streaming responses from Gemini API with real-time UI updates through React state management and custom hooks like `useGeminiStream`.
+
+### Tool Execution Flow
+1. User input parsed for tool calls in `coreToolScheduler.ts`
+2. Tool registry validates and executes tools
+3. Results streamed back through UI components
+4. Error handling and retry logic for reliability
+
+### Sandbox Security Model
+- **macOS**: Uses system sandbox profiles (`sandbox-macos-*.sb` files)
+- **Docker/Podman**: Containerized execution with controlled mounts
+- **File access**: Controlled through trust dialogs and `.geminiignore`
+
+### VSCode Integration
+The companion extension (`packages/vscode-ide-companion/`) provides:
+- File diff management
+- IDE context sharing
+- Real-time collaboration features
+
 ## 🚨 Common Issues and Solutions
 
 ### Authentication Issues
@@ -242,7 +255,7 @@ switch (value.type) {
 - Clear auth cache: `rm -rf ~/.gemini/auth`
 
 ### Build Issues
-- Clean build: `npm run clean && npm ci && npm run build:all`
+- Clean build: `npm run clean && npm install && npm run build:all`
 - Check Node.js version: `node --version` (must be ≥20.0.0)
 - Verify TypeScript errors: `npm run typecheck`
 
@@ -251,32 +264,10 @@ switch (value.type) {
 - Mock critical dependencies at file top
 - Use `vi.useFakeTimers()` for time-sensitive tests
 
-## 🌟 Key Implementation Details
-
-### Streaming Response Handling
-The CLI uses streaming responses from Gemini API with real-time UI updates through React state management.
-
-### Tool Execution Flow
-1. User input parsed for tool calls
-2. Tool registry validates and executes tools
-3. Results streamed back through UI components
-4. Error handling and retry logic for reliability
-
-### Sandbox Security Model
-- macOS: Uses system sandbox profiles
-- Docker/Podman: Containerized execution
-- File access: Controlled through trust dialogs
-
-### VSCode Integration
-The companion extension provides:
-- File diff management
-- IDE context sharing
-- Real-time collaboration features
-
-## 📚 Additional Resources
+## 📚 Key Resources
 
 - **Main branch**: `main`
-- **Documentation**: `/docs` directory
-- **Examples**: `/docs/examples`
-- **Architecture**: `/docs/architecture.md`
-- **Contributing**: `/CONTRIBUTING.md`
+- **Documentation**: `/docs` directory with comprehensive guides
+- **Architecture**: `/docs/architecture.md` for detailed system design
+- **Contributing**: `/CONTRIBUTING.md` for contribution guidelines
+- **Testing**: `/docs/integration-tests.md` for testing documentation
